@@ -8,45 +8,44 @@ app.use(cors());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
 
-  // 1. La PC crea la sala
+  // 1. Crear Sala (PC)
   socket.on('create-room', () => {
-    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    const pin = String(Math.floor(1000 + Math.random() * 9000));
     socket.join(pin);
     socket.emit('room-created', pin);
     console.log(`Sala creada con PIN: ${pin}`);
   });
 
-  // 2. El Celular ingresa el PIN
-  socket.on('join-room', (pin, callback) => {
-    // Forzamos la unión del socket a la sala del PIN
-    socket.join(pin);
-    console.log(`Visor intentando unirse a PIN: ${pin}`);
+  // 2. Unirse a Sala (Celular)
+  socket.on('join-room', (rawPin) => {
+    const pin = String(rawPin).trim();
+    const room = io.sockets.adapter.rooms.get(pin);
 
-    // Avisamos a la PC en la sala que el visor se conectó
-    io.to(pin).emit('visor-connected');
-
-    // Confirmamos al celular directamente si usó callback, o por evento estándar
-    if (typeof callback === 'function') {
-      callback({ status: 'ok' });
+    // Verificar si existe la sala de la PC
+    if (room && room.size > 0) {
+      socket.join(pin);
+      socket.emit('joined-success');
+      // Avisar a la PC que el visor se unió
+      io.to(pin).emit('visor-connected');
+      console.log(`Visor unido correctamente al PIN: ${pin}`);
+    } else {
+      socket.emit('error-message', 'PIN no encontrado o sala inactiva');
     }
-    socket.emit('joined-success');
   });
 
-  // 3. La PC retransmite el joystick al celular
+  // 3. Transmitir Joystick (PC -> Celular)
   socket.on('gamepad-input', (data) => {
     if (data && data.pin) {
+      const pin = String(data.pin).trim();
       const payload = data.inputs || data.input || data;
-      // Enviamos a TODOS los demás miembros conectados a la sala del PIN
-      socket.broadcast.to(data.pin).emit('gamepad-update', payload);
+      // Emitir a todos en la sala EXCEPTO a la PC que emite
+      socket.to(pin).emit('gamepad-update', payload);
     }
   });
 
@@ -57,5 +56,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor escuchando en puerto ${PORT}`);
+  console.log(`Servidor activo en puerto ${PORT}`);
 });
