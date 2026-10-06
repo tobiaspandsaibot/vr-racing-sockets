@@ -14,45 +14,51 @@ const io = new Server(server, {
   }
 });
 
-const rooms = {};
-
 io.on('connection', (socket) => {
+  console.log('Cliente conectado:', socket.id);
 
-  // La PC genera la sala
+  // 1. Crear sala desde la PC
   socket.on('create-room', () => {
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
-    rooms[pin] = { pcSocket: socket.id, visorSocket: null };
     socket.join(pin);
     socket.emit('room-created', pin);
+    console.log(`Sala creada con PIN: ${pin}`);
   });
 
-  // El Celular ingresa el PIN
+  // 2. Unir el Celular a la sala
   socket.on('join-room', (pin) => {
-    if (rooms[pin]) {
-      rooms[pin].visorSocket = socket.id;
+    const room = io.sockets.adapter.rooms.get(pin);
+    
+    // Verificar si la sala existe (si la PC creó el PIN)
+    if (room && room.size > 0) {
       socket.join(pin);
       
-      // Notificar al celular y a la PC
+      // Confirmación al Celular
       socket.emit('joined-success');
-      io.to(rooms[pin].pcSocket).emit('visor-connected');
+      
+      // Notificar a TODOS en la sala (incluyendo la PC) que el visor se conectó
+      io.to(pin).emit('visor-connected');
+      console.log(`Visor unido exitosamente al PIN: ${pin}`);
     } else {
-      socket.emit('error-message', 'PIN no encontrado o expiro');
+      socket.emit('error-message', 'El PIN no existe o la sala de la PC se cerró.');
     }
   });
 
-  // Reenviar datos del Joystick de la PC al celular
+  // 3. Transmitir los controles del Joystick/Teclado al Celular
   socket.on('gamepad-input', (data) => {
     if (data && data.pin) {
       const payload = data.inputs || data.input || data;
-      // Retransmitir a los clientes conectados a esa sala
-      io.to(data.pin).emit('gamepad-update', payload);
+      // Retransmite los datos a la sala del PIN
+      socket.to(data.pin).emit('gamepad-update', payload);
     }
   });
 
-  socket.on('disconnect', () => {});
+  socket.on('disconnect', () => {
+    console.log('Cliente desconectado:', socket.id);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server corriendo en puerto ${PORT}`);
+  console.log(`Servidor de Socket.io activo en puerto ${PORT}`);
 });
