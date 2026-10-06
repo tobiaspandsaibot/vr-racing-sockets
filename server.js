@@ -12,39 +12,38 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
-  console.log('Cliente conectado:', socket.id);
+  console.log('Nuevo cliente conectado:', socket.id);
 
-  // 1. Crear Sala (PC)
+  // PC genera sala
   socket.on('create-room', () => {
     const pin = String(Math.floor(1000 + Math.random() * 9000));
     socket.join(pin);
     socket.emit('room-created', pin);
-    console.log(`Sala creada con PIN: ${pin}`);
+    console.log(`[PC] Sala creada PIN: ${pin}`);
   });
 
-  // 2. Unirse a Sala (Celular)
+  // Celular intenta ingresar PIN
   socket.on('join-room', (rawPin) => {
     const pin = String(rawPin).trim();
-    const room = io.sockets.adapter.rooms.get(pin);
+    console.log(`[CELULAR] Petición para unirse al PIN: ${pin}`);
 
-    // Verificar si existe la sala de la PC
-    if (room && room.size > 0) {
-      socket.join(pin);
-      socket.emit('joined-success');
-      // Avisar a la PC que el visor se unió
-      io.to(pin).emit('visor-connected');
-      console.log(`Visor unido correctamente al PIN: ${pin}`);
-    } else {
-      socket.emit('error-message', 'PIN no encontrado o sala inactiva');
-    }
+    // Unir socket del celular a la sala
+    socket.join(pin);
+
+    // Avisar al celular que la unión fue exitosa
+    socket.emit('joined-success');
+
+    // Notificar A TODOS en la sala (PC incluida)
+    io.to(pin).emit('visor-connected');
+    console.log(`[OK] Visor sincronizado en sala: ${pin}`);
   });
 
-  // 3. Transmitir Joystick (PC -> Celular)
+  // Reenviar datos del mando (PC -> Celular)
   socket.on('gamepad-input', (data) => {
     if (data && data.pin) {
       const pin = String(data.pin).trim();
       const payload = data.inputs || data.input || data;
-      // Emitir a todos en la sala EXCEPTO a la PC que emite
+      // Emitir a todos en la sala menos al emisor (PC)
       socket.to(pin).emit('gamepad-update', payload);
     }
   });
@@ -56,5 +55,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor activo en puerto ${PORT}`);
+  console.log(`Servidor de Sockets activo en puerto ${PORT}`);
 });
