@@ -17,7 +17,7 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
 
-  // 1. Crear sala desde la PC
+  // 1. La PC crea la sala
   socket.on('create-room', () => {
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
     socket.join(pin);
@@ -25,31 +25,28 @@ io.on('connection', (socket) => {
     console.log(`Sala creada con PIN: ${pin}`);
   });
 
-  // 2. Unir el Celular a la sala
-  socket.on('join-room', (pin) => {
-    const room = io.sockets.adapter.rooms.get(pin);
-    
-    // Verificar si la sala existe (si la PC creó el PIN)
-    if (room && room.size > 0) {
-      socket.join(pin);
-      
-      // Confirmación al Celular
-      socket.emit('joined-success');
-      
-      // Notificar a TODOS en la sala (incluyendo la PC) que el visor se conectó
-      io.to(pin).emit('visor-connected');
-      console.log(`Visor unido exitosamente al PIN: ${pin}`);
-    } else {
-      socket.emit('error-message', 'El PIN no existe o la sala de la PC se cerró.');
+  // 2. El Celular ingresa el PIN
+  socket.on('join-room', (pin, callback) => {
+    // Forzamos la unión del socket a la sala del PIN
+    socket.join(pin);
+    console.log(`Visor intentando unirse a PIN: ${pin}`);
+
+    // Avisamos a la PC en la sala que el visor se conectó
+    io.to(pin).emit('visor-connected');
+
+    // Confirmamos al celular directamente si usó callback, o por evento estándar
+    if (typeof callback === 'function') {
+      callback({ status: 'ok' });
     }
+    socket.emit('joined-success');
   });
 
-  // 3. Transmitir los controles del Joystick/Teclado al Celular
+  // 3. La PC retransmite el joystick al celular
   socket.on('gamepad-input', (data) => {
     if (data && data.pin) {
       const payload = data.inputs || data.input || data;
-      // Retransmite los datos a la sala del PIN
-      socket.to(data.pin).emit('gamepad-update', payload);
+      // Enviamos a TODOS los demás miembros conectados a la sala del PIN
+      socket.broadcast.to(data.pin).emit('gamepad-update', payload);
     }
   });
 
@@ -60,5 +57,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor de Socket.io activo en puerto ${PORT}`);
+  console.log(`Servidor escuchando en puerto ${PORT}`);
 });
