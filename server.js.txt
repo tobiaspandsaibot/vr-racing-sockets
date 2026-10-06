@@ -1,0 +1,49 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+
+const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Permite conexiones desde tu subdominio de HostGator
+    methods: ["GET", "POST"]
+  }
+});
+
+app.get('/', (req, res) => {
+  res.send('Servidor WebSockets VR Activo');
+});
+
+const rooms = {};
+
+io.on('connection', (socket) => {
+  // Crear sala desde la PC
+  socket.on('create-room', () => {
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    rooms[pin] = { host: socket.id, client: null };
+    socket.join(pin);
+    socket.emit('room-created', pin);
+  });
+
+  // Unirse a sala desde el celular
+  socket.on('join-room', (pin) => {
+    if (rooms[pin]) {
+      rooms[pin].client = socket.id;
+      socket.join(pin);
+      socket.emit('joined-success');
+      io.to(rooms[pin].host).emit('client-connected');
+    } else {
+      socket.emit('error-message', 'Código PIN no válido');
+    }
+  });
+
+  // Reenviar datos del Joystick de PC a Celular
+  socket.on('input-data', (data) => {
+    socket.broadcast.emit('gamepad-update', data);
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
